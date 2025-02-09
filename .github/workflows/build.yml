@@ -7,7 +7,10 @@ on:
   pull_request:
     branches:
       - master
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
+
+permissions:
+  contents: write  # Ensure GitHub Actions can create releases
 
 jobs:
   build:
@@ -44,13 +47,16 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: git_user_manager-windows.exe
+          name: git_user_manager-windows
           path: target/release/git_user_manager.exe
 
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download Linux Binary
         uses: actions/download-artifact@v4
         with:
@@ -66,16 +72,16 @@ jobs:
       - name: Download Windows Binary
         uses: actions/download-artifact@v4
         with:
-          name: git_user_manager-windows.exe
+          name: git_user_manager-windows
           path: artifacts/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
+          tag_name: v1.0.2
           files: |
             artifacts/git_user_manager-linux
             artifacts/git_user_manager-macos
-            artifacts/git_user_manager-windows.exe
+            artifacts/git_user_manager-windows/git_user_manager.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
