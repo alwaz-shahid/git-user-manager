@@ -2,16 +2,8 @@ mod commands;
 mod util;
 
 use commands::{add_user, current_user, list_users, switch_user};
-use util::{display_divider, read_input};
-
-enum Cmds {
-    ListUsers,
-    CurrentUser,
-    AddUser,
-    SwitchUser,
-    Invalid,
-    Exit,
-}
+use dialoguer::{theme::ColorfulTheme, Select};
+use util::display_divider;
 
 fn main() {
     let mut exit_program = false;
@@ -19,8 +11,8 @@ fn main() {
 
     println!("Welcome to Git User Manager CLI Tool!\n");
     display_divider();
-    println!("Version: 1.0.0");
-    println!("Last Updated: 2024-07-18");
+    println!("Version: 1.0.1");
+    println!("Last Updated: 2025-02-09");
     println!("License: MIT");
     println!("Language: Rust");
     println!("Author: Alwaz Shahid");
@@ -30,35 +22,30 @@ fn main() {
     display_divider();
 
     while !exit_program {
-        display_divider();
+        let options = vec![
+            "List users",
+            "Current user",
+            "Add user",
+            "Switch user",
+            "Exit",
+        ];
 
-        println!("1- List users\n2- Current user\n3- Add user\n4- Switch user");
-        display_divider();
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select an option")
+            .items(&options)
+            .default(0)
+            .interact()
+            .unwrap();
 
-        let input = read_input("Select an option: ");
-        let cmd = match input.trim() {
-            "1" => Cmds::ListUsers,
-            "2" => Cmds::CurrentUser,
-            "3" => Cmds::AddUser,
-            "4" => Cmds::SwitchUser,
-            "5" => Cmds::Exit,
-            _ => Cmds::Invalid,
-        };
-
-        match cmd {
-            Cmds::ListUsers => list_users(),
-            Cmds::CurrentUser => current_user(),
-            Cmds::AddUser => add_user(),
-            Cmds::SwitchUser => switch_user(),
-            Cmds::Invalid => invalid(),
-            Cmds::Exit => exit_program = true,
+        match selection {
+            0 => list_users(),
+            1 => current_user(),
+            2 => add_user(),
+            3 => switch_user(),
+            4 => exit_program = true,
+            _ => println!("Invalid selection. Please try again."),
         }
 
         display_divider();
-        display_divider();
     }
-}
-
-fn invalid() {
-    println!("Invalid command");
 }

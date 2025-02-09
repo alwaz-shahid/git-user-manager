@@ -1,7 +1,10 @@
-use crate::util::{display_divider, read_input, run_command};
+use crate::util::{display_divider, run_command};
+use dialoguer::{theme::ColorfulTheme, Select};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+use std::path::PathBuf;
+use dirs::home_dir;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct User {
@@ -9,22 +12,33 @@ struct User {
     email: String,
 }
 
-const USERS_FILE: &str = "users.json";
+const USERS_FILE: &str = "git_users.json";
 
-// pub fn list_users() {
-//     let users = load_users();
-//     println!("Current users:");
-//     for user in users {
-//         println!("{:?}", user);
-//     }
-// }
-pub fn list_users() {
-    let users = load_users();
-    println!("All users list:");
-    for (index, user) in users.iter().enumerate() {
-        println!("{}: {:?}", index + 1, user); // Adding 1 to index for 1-based numbering
+fn get_users_file_path() -> PathBuf {
+    if let Some(home) = home_dir() {
+        home.join(USERS_FILE)
+    } else {
+        PathBuf::from(USERS_FILE)
     }
 }
+
+pub fn list_users() {
+    let users = load_users().unwrap_or_else(|err| {
+        eprintln!("Error loading users: {}", err);
+        Vec::new()
+    });
+
+    if users.is_empty() {
+        println!("No users available.");
+        return;
+    }
+
+    println!("All users list:");
+    for (index, user) in users.iter().enumerate() {
+        println!("{}: Name: {}, Email: {}", index + 1, user.name, user.email);
+    }
+}
+
 pub fn current_user() {
     run_command("git config user.name && git config user.email");
 }
@@ -33,78 +47,93 @@ pub fn add_user() {
     println!("ADD A NEW USER:");
     display_divider();
 
-    let name = read_input("Enter your name: ");
-    let email = read_input("Enter your email: ");
+    let name = dialoguer::Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter your name")
+        .interact_text()
+        .unwrap();
+
+    let email = dialoguer::Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enter your email")
+        .interact_text()
+        .unwrap();
+
     let user = User { name, email };
     display_divider();
 
-    println!(
-        "Are you sure you want to add the following user?: {:?}",
-        user
-    );
-    let choice = read_input("Confirm (y/n): ").to_lowercase();
+    let confirm = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!(
+            "Are you sure you want to add the following user?\n{:?}",
+            user
+        ))
+        .interact()
+        .unwrap();
 
-    if choice.starts_with('y') {
-        let mut users = load_users();
+    if confirm {
+        let mut users = load_users().unwrap_or_else(|_| Vec::new());
         users.push(user);
-        save_users(&users);
-        println!("User added successfully.");
-        display_divider();
+        if save_users(&users).is_err() {
+            eprintln!("Failed to save users.");
+        } else {
+            println!("User added successfully.");
+        }
     } else {
         println!("User addition canceled.");
-        display_divider();
     }
+    display_divider();
 }
 
 pub fn switch_user() {
-    let users = load_users();
+    let users = load_users().unwrap_or_else(|err| {
+        eprintln!("Error loading users: {}", err);
+        Vec::new()
+    });
 
     if users.is_empty() {
         println!("No users available to switch.");
         return;
     }
 
-    println!("All users list:");
-    for (index, user) in users.iter().enumerate() {
-        println!("{}: Name: {}, Email: {}", index + 1, user.name, user.email); // Adding 1 to index for 1-based numbering
-    }
+    let user_names: Vec<String> = users
+        .iter()
+        .map(|user| format!("{} <{}>", user.name, user.email))
+        .collect();
 
-    println!("Enter the index of the user you want to switch to:");
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Select a user to switch to")
+        .items(&user_names)
+        .default(0)
+        .interact()
+        .unwrap();
 
-    let input = read_input("Enter index: ");
-    let index = input.trim().parse::<usize>();
+    let selected_user = &users[selection];
+    let command = format!(
+        "git config --global user.name \"{}\" && git config --global user.email \"{}\"",
+        selected_user.name, selected_user.email
+    );
 
-    match index {
-        Ok(idx) if idx > 0 && idx <= users.len() => {
-            let selected_user = &users[idx - 1]; // Adjusting index to 0-based for vector access
-            let command = format!(
-                "git config --global user.name \"{}\" && git config --global user.email \"{}\"",
-                selected_user.name, selected_user.email
-            );
-
-            // Execute the command
-            run_command(&command);
-            // print!("{} ", command);
-            println!(
-                "Switched to User: Name: {}, Email: {}",
-                selected_user.name, selected_user.email
-            );
-            // Implement further actions with the selected user if needed
-        }
-        _ => {
-            println!("Invalid index. No user switched.");
-        }
-    }
+    run_command(&command);
+    println!(
+        "Switched to User: Name: {}, Email: {}",
+        selected_user.name, selected_user.email
+    );
 }
 
-fn load_users() -> Vec<User> {
-    let file = File::open(USERS_FILE).unwrap_or_else(|_| File::create(USERS_FILE).unwrap());
+fn load_users() -> Result<Vec<User>, Box<dyn std::error::Error>> {
+    let path = get_users_file_path();
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let file = File::open(path)?;
     let reader = BufReader::new(file);
-    serde_json::from_reader(reader).unwrap_or_else(|_| Vec::new())
+    let users = serde_json::from_reader(reader)?;
+    Ok(users)
 }
 
-fn save_users(users: &[User]) {
-    let file = File::create(USERS_FILE).expect("Unable to create file");
+fn save_users(users: &[User]) -> Result<(), Box<dyn std::error::Error>> {
+    let path = get_users_file_path();
+    let file = File::create(path)?;
     let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &users).expect("Unable to write data");
+    serde_json::to_writer_pretty(writer, &users)?;
+    Ok(())
 }
