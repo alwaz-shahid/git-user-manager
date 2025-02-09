@@ -1,0 +1,81 @@
+name: Build and Release Rust CLI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build project
+        run: cargo build --release
+
+      - name: Upload Linux Binary
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: git_user_manager-linux
+          path: target/release/git_user_manager
+
+      - name: Upload macOS Binary
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: git_user_manager-macos
+          path: target/release/git_user_manager
+
+      - name: Upload Windows Binary
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: git_user_manager-windows.exe
+          path: target/release/git_user_manager.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git_user_manager-linux
+          path: artifacts/
+
+      - name: Download macOS Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git_user_manager-macos
+          path: artifacts/
+
+      - name: Download Windows Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git_user_manager-windows.exe
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          files: |
+            artifacts/git_user_manager-linux
+            artifacts/git_user_manager-macos
+            artifacts/git_user_manager-windows.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
